@@ -11,7 +11,9 @@ function love.load()
 	minelist = {}
 	mines = math.ceil(relh*relw*.2)
 	flags = mines
-	uncoveredCount = 0;
+	uncoveredCount = 0
+	coins = 0
+	price = 200
 	require "class"
 	require "tile"
 	font = love.graphics.newFont(18)
@@ -48,8 +50,10 @@ end
 function reset()
 	minelist = {}
 	uncoveredCount = 0;
+	coins = 0;
 	flags = mines
 	gamestate = "load"
+	screen = "game"
 	for i = 0, relw-1 do
 		for j = 0, relh-1 do
 			board[i][j]:reset()
@@ -93,6 +97,7 @@ function uncoverAround(x,y)
 			if board[tx][ty]:isCovered() and not board[tx][ty]:isFlagged() then 
 				board[tx][ty]:uncover()
 				uncoveredCount = uncoveredCount +1
+				coins = coins + 1-----------------------------------------------------------------
 				if board[tx][ty]:getValue() == 0 then
 					uncoverAround(tx,ty)
 				end
@@ -113,6 +118,9 @@ function checkWin()
 		gamestate = "win"
 		return
 	end
+	if #minelist == 0 then
+		return
+	end
 	for i = 1, #minelist do
 		if not minelist[i]:isFlagged() then
 			return
@@ -125,11 +133,15 @@ end
 function firstClick(x,y)
 	gamestate = "playing"
 	board[x][y]:uncover()
+	uncoveredCount = uncoveredCount + 1
+	coins = coins + 1
 	for a = 1, 8 do
 		tx = x+adj[a][1]
 		ty = y+adj[a][2]
 		if tx>=0 and tx < relw and ty>=0 and ty< relh then --is a real tile
 			board[tx][ty]:uncover()
+			uncoveredCount = uncoveredCount + 1
+			coins = coins + 1
 		end
 	end
 	placemines(mines)
@@ -142,6 +154,7 @@ function firstClick(x,y)
 			end
 		end
 	end
+	checkWin()
 end
 
 function love.mousepressed( x, y, button, istouch )
@@ -152,25 +165,36 @@ function love.mousepressed( x, y, button, istouch )
 		if gamestate == "load" and button == 'l' then
 				firstClick(x,y)
 		end
+		local tile = board[x][y]
 		if (button == 'l' or istouch) and screen == "game" then --click
-			if not board[x][y]:isFlagged() and board[x][y]:isCovered() then
-				board[x][y]:uncover()
+			
+			if not tile:isFlagged() and tile:isCovered() then
+				tile:uncover()
 				uncoveredCount = uncoveredCount + 1
-				if board[x][y]:getValue() == 0 then
+				coins = coins + 1--------------------------------------
+				if tile:getValue() == 0 then
 					uncoverAround(x,y)
-				elseif board[x][y]:getValue() == 9 then
-					showBombs() --end game
-					screen = "gameover"
-					gamestate = "lose"
+				elseif tile:getValue() == 9 then
+					coins = coins - 1 ----------------
+					uncoveredCount = uncoveredCount - 1
+					if coins <price then
+						showBombs() --end game
+						screen = "gameover"
+						gamestate = "lose"
+					else
+						coins = coins - price ----------------------
+						tile:toggleFlag()
+						flags = flags -1
+					end
 				end
 				checkWin()
 			end
 		elseif button == 'r' and screen == "game" then --flag mine
-			if board[x][y]:isCovered() then
-				if board[x][y]:toggleFlag() then
+			if tile:isCovered() then
+				if tile:toggleFlag() then
 					flags = flags -1
 					if flags<0 then
-						board[x][y]:toggleFlag()
+						tile:toggleFlag()
 						flags = flags +1
 					end
 				else
@@ -200,6 +224,7 @@ function love.draw()
 	love.graphics.setFont(font)
 	love.graphics.setColor(200,200,200)
 	love.graphics.printf("Flags: "..flags,20,relh*tileSize+20,100,"left")
+	love.graphics.printf("Coins: "..coins,20,relh*tileSize+50,100,"left")
 	local textw = font:getWidth("Press 'r' for new game")
 	love.graphics.printf("Press 'r' for new game",width/2-textw/2,relh*tileSize+80,textw,"center")
 	if screen=="gameover" then 
