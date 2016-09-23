@@ -2,23 +2,26 @@ function love.load()
 	screen = "load" --load, game, gameover
 	gamestate = "load" --load, playing, lose, win
 	height,width = 800,900
-	tileSize = 20
-	relh = height/tileSize-10
-	relw = width/tileSize
+	tileSize = 60
+	relh = (height-200)/tileSize
+	relw = math.floor((width-2/math.sqrt(3))/(tileSize/math.sqrt(3)))
 	love.window.setMode(width,height)
 	love.window.setTitle("Minesweeper")
 	board = {}
 	minelist = {}
-	mines = math.ceil(relh*relw*.2)
+	mines = math.ceil(relh*relw*.14)--14%
 	flags = mines
 	uncoveredCount = 0
 	coins = 0
 	price = 200
+	active = 'l'
+	flag = 'r'
 	require "class"
 	require "tile"
 	font = love.graphics.newFont(18)
 	endfont = love.graphics.newFont(50)
-	tilefont = love.graphics.newFont(12)
+	tilefont = love.graphics.newFont(12)--12
+	ratio = math.sqrt(3)
 	init()
 end
 
@@ -27,7 +30,7 @@ function init()
 	for i = 0, relw-1 do
 		row = {}
 		for j = 0, relh-1 do
-			row[j] = tile:new(i,j,tileSize)
+			row[j] = tile:new(i,j,tileSize,(i+j)%2==0 and true or false)
 		end
 		board[i] = row
 	end
@@ -39,7 +42,7 @@ function placemines(minecount)
 	while left > 0 do
 		tryx = math.random(0,relw-1)
 		tryy = math.random(0,relh-1)
-		if board[tryx][tryy]:getValue()~=9 and board[tryx][tryy]:isCovered() then
+		if board[tryx][tryy]:getValue()~=13 and board[tryx][tryy]:isCovered() then
 			setMine(tryx,tryy)
 			minelist[left] = board[tryx][tryy]--{tryx,tryy}
 			left = left - 1
@@ -49,7 +52,7 @@ end
 
 function reset()
 	minelist = {}
-	uncoveredCount = 0;
+	uncoveredCount = 0
 	coins = 0;
 	flags = mines
 	gamestate = "load"
@@ -62,19 +65,27 @@ function reset()
 end
 
 adj = {}
-adj[1] = {1,1}
-adj[2] = {1,0}
-adj[3] = {1,-1}
-adj[4] = {0,-1}
-adj[5] = {0,1}
-adj[6] = {-1,-1}
-adj[7] = {-1,0}
-adj[8] = {-1,1}
+--bottom
+adj[1] = {-2,1}
+adj[2] = {-1,1}
+adj[3] = {0,1}
+adj[4] = {1,1}
+adj[5] = {2,1}
+--side
+adj[6] = {-1,0}
+adj[7] = {-2,0}
+adj[8] = {1,0}
+adj[9] = {2,0}
+--top
+adj[10] = {-1,-1}
+adj[11] = {0,-1}
+adj[12] = {1,-1}
 function setMine(x,y)
-	board[x][y]:setValue(9)
-	for a = 1, 8 do
+	board[x][y]:setValue(13)
+	local swap = board[x][y]:isUp() and 1 or -1
+	for a = 1, 12 do
 		tx = x+adj[a][1]
-		ty = y+adj[a][2]
+		ty = y+adj[a][2]*swap
 		if tx>=0 and tx < relw and ty>=0 and ty< relh then --is a real tile
 			if not board[tx][ty]:isMine() then 
 				board[tx][ty]:increment()
@@ -90,9 +101,10 @@ function love.update(dt)
 end
 
 function uncoverAround(x,y)
-	for a = 1, 8 do
+	local swap = board[x][y]:isUp() and 1 or -1
+	for a = 1, 12 do
 		tx = x+adj[a][1]
-		ty = y+adj[a][2]
+		ty = y+adj[a][2]*swap
 		if tx>=0 and tx < relw and ty>=0 and ty< relh then --is a real tile
 			if board[tx][ty]:isCovered() and not board[tx][ty]:isFlagged() then 
 				board[tx][ty]:uncover()
@@ -135,21 +147,24 @@ function firstClick(x,y)
 	board[x][y]:uncover()
 	uncoveredCount = uncoveredCount + 1
 	coins = coins + 1
-	for a = 1, 8 do
+	local swap = board[x][y]:isUp() and 1 or -1
+	for a = 1, 12 do
 		tx = x+adj[a][1]
-		ty = y+adj[a][2]
+		ty = y+adj[a][2]*swap
 		if tx>=0 and tx < relw and ty>=0 and ty< relh then --is a real tile
-			board[tx][ty]:uncover()
-			uncoveredCount = uncoveredCount + 1
-			coins = coins + 1
+			if not board[tx][ty]:isFlagged() then
+				board[tx][ty]:uncover()
+				uncoveredCount = uncoveredCount + 1
+				coins = coins + 1
+			end
 		end
 	end
 	placemines(mines)
-	for a = 1, 8 do
+	for a = 1, 12 do
 		tx = x+adj[a][1]
-		ty = y+adj[a][2]
+		ty = y+adj[a][2]*swap
 		if tx>=0 and tx < relw and ty>=0 and ty< relh then --is a real tile
-			if board[tx][ty]:getValue() == 0 then
+			if board[tx][ty]:getValue() == 0 and not board[tx][ty]:isFlagged() then
 				uncoverAround(tx,ty)
 			end
 		end
@@ -159,22 +174,29 @@ end
 
 function love.mousepressed( x, y, button, istouch )
 	if x>=0 and x<relw*tileSize and y>=0 and y<relh*tileSize then--inside board
-		
-		local x = math.floor(x/tileSize)
-		local y = math.floor(y/tileSize)
-		if gamestate == "load" and button == 'l' then
+		if screen == "gameover" then
+			reset()
+			return
+		end
+		local a = math.floor((y-ratio*(x-tileSize/ratio))/(2*tileSize))
+		local b = math.floor((y+ratio*(x-tileSize/ratio))/(2*tileSize))
+		local x = b-a
+		if x<0 or x>=relw then
+			return
+		end
+		local y = math.floor((y)/tileSize)
+		if gamestate == "load" and button == active then
 				firstClick(x,y)
 		end
 		local tile = board[x][y]
-		if (button == 'l' or istouch) and screen == "game" then --click
-			
+		if (button == active or (istouch and active == 'l')) and screen == "game" then --click
 			if not tile:isFlagged() and tile:isCovered() then
 				tile:uncover()
 				uncoveredCount = uncoveredCount + 1
 				coins = coins + 1--------------------------------------
 				if tile:getValue() == 0 then
 					uncoverAround(x,y)
-				elseif tile:getValue() == 9 then
+				elseif tile:getValue() == 13 then
 					coins = coins - 1 ----------------
 					uncoveredCount = uncoveredCount - 1
 					if coins <price then
@@ -189,7 +211,7 @@ function love.mousepressed( x, y, button, istouch )
 				end
 				checkWin()
 			end
-		elseif button == 'r' and screen == "game" then --flag mine
+		elseif (button == flag or (istouch and flag == 'r')) and screen == "game"  then --flag mine
 			if tile:isCovered() then
 				if tile:toggleFlag() then
 					flags = flags -1
@@ -203,14 +225,22 @@ function love.mousepressed( x, y, button, istouch )
 				checkWin()
 			end
 		end
+	else
+		toggleLR()
 	end
 end
 
 function love.keypressed(key)
 	if key == "r" then
 		reset()
-		--placemines(mines)
 	end
+	if key == "s" then
+		toggleLR()
+	end
+end
+
+function toggleLR()
+	active,flag=flag,active
 end
 
 function love.draw()
@@ -225,6 +255,7 @@ function love.draw()
 	love.graphics.setColor(200,200,200)
 	love.graphics.printf("Flags: "..flags,20,relh*tileSize+20,100,"left")
 	love.graphics.printf("Coins: "..coins,20,relh*tileSize+50,100,"left")
+	love.graphics.printf("Touch: "..(active == 'l' and "Uncover" or "Flag"),20,relh*tileSize+80,200,"left")
 	local textw = font:getWidth("Press 'r' for new game")
 	love.graphics.printf("Press 'r' for new game",width/2-textw/2,relh*tileSize+80,textw,"center")
 	if screen=="gameover" then 
